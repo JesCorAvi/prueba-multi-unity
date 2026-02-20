@@ -1,5 +1,6 @@
 ﻿using UnityEngine;
 using Mirror;
+using UnityEngine.InputSystem;
 
 public class PlayerFPSController : NetworkBehaviour
 {
@@ -10,56 +11,107 @@ public class PlayerFPSController : NetworkBehaviour
 
     [Header("Ajustes de Movimiento")]
     public float speed = 10f;
-    public float mouseSensitivity = 150f;
+    public float mouseSensitivity = 15f; 
 
     private float xRotation = 0f;
 
-    public override void OnStartLocalPlayer()
+    void Start()
     {
-        // Solo activamos la cámara y bloqueamos el ratón si ESTE es nuestro jugador
-        playerCamera.gameObject.SetActive(true);
-        Cursor.lockState = CursorLockMode.Locked;
-        Cursor.visible = false;
+        if (!isLocalPlayer)
+        {
+            if (playerCamera != null)
+                playerCamera.gameObject.SetActive(false);
+            return;
+        }
+
+        // Empezamos con el cursor bloqueado para jugar
+        LockCursor();
     }
 
     void Update()
     {
-        // Si no somos el dueño de este jugador, no podemos controlarlo
         if (!isLocalPlayer) return;
 
-        HandleMouseLook();
-        HandleMovement();
+        // Comprobamos si el jugador quiere liberar o bloquear el ratón
+        HandleCursorToggle();
 
-        // Presiona ESC para liberar el ratón en el editor
-        if (Input.GetKeyDown(KeyCode.Escape))
+        // SOLO rotamos la cámara si el cursor está bloqueado (oculto)
+        if (Cursor.lockState == CursorLockMode.Locked)
         {
-            Cursor.lockState = CursorLockMode.None;
-            Cursor.visible = true;
+            HandleMouseLook();
+        }
+        
+        // Podemos seguir moviéndonos aunque el ratón esté libre (opcional)
+        HandleMovement();
+    }
+
+    // --- NUEVO: Función para liberar/bloquear el ratón ---
+    void HandleCursorToggle()
+    {
+        if (Keyboard.current == null) return;
+
+        // Si presionamos la tecla ESCAPE
+        if (Keyboard.current.escapeKey.wasPressedThisFrame)
+        {
+            if (Cursor.lockState == CursorLockMode.Locked)
+            {
+                UnlockCursor(); // Liberamos el ratón para usar los menús
+            }
+            else
+            {
+                LockCursor();   // Volvemos a ocultar el ratón para jugar
+            }
         }
     }
 
+    void LockCursor()
+    {
+        Cursor.lockState = CursorLockMode.Locked;
+        Cursor.visible = false;
+    }
+
+    void UnlockCursor()
+    {
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
+    }
+    // -----------------------------------------------------
+
     void HandleMouseLook()
     {
-        float mouseX = Input.GetAxis("Mouse X") * mouseSensitivity * Time.deltaTime;
-        float mouseY = Input.GetAxis("Mouse Y") * mouseSensitivity * Time.deltaTime;
+        if (Mouse.current == null) return;
+
+        Vector2 mouseDelta = Mouse.current.delta.ReadValue();
+        
+        float mouseX = mouseDelta.x * mouseSensitivity * Time.deltaTime;
+        float mouseY = mouseDelta.y * mouseSensitivity * Time.deltaTime;
 
         xRotation -= mouseY;
         xRotation = Mathf.Clamp(xRotation, -90f, 90f);
 
-        // Rotar cámara arriba/abajo
-        playerCamera.transform.localRotation = Quaternion.Euler(xRotation, 0f, 0f);
-        // Rotar cuerpo del jugador izquierda/derecha
-        playerBody.Rotate(Vector3.up * mouseX);
+        if (playerCamera != null)
+            playerCamera.transform.localRotation = Quaternion.Euler(xRotation, 0f, 0f);
+        
+        if (playerBody != null)
+            playerBody.Rotate(Vector3.up * mouseX);
     }
 
     void HandleMovement()
     {
-        float x = Input.GetAxis("Horizontal");
-        float z = Input.GetAxis("Vertical");
+        float x = 0f;
+        float z = 0f;
 
-        Vector3 move = playerBody.right * x + playerBody.forward * z;
-        controller.Move(move * speed * Time.deltaTime);
-        
-        // Aquí podrías añadir gravedad si es necesario
+        if (Keyboard.current != null)
+        {
+            if (Keyboard.current.dKey.isPressed) x += 1f;
+            if (Keyboard.current.aKey.isPressed) x -= 1f;
+            if (Keyboard.current.wKey.isPressed) z += 1f;
+            if (Keyboard.current.sKey.isPressed) z -= 1f;
+        }
+
+        Vector3 move = transform.right * x + transform.forward * z;
+
+        if (controller != null)
+            controller.Move(move.normalized * speed * Time.deltaTime);
     }
 }
